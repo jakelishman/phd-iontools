@@ -31,6 +31,11 @@ def ladder_indices(ns, change, quadrant):
                           for n in range(ns - abs(change))], dtype=np.intp).T)
 
 def diagonal_indices(start, stop):
+    """diagonal_indices(start : int, stop : int) -> ndarry slice object
+
+    Get a slice object which returns the diagonal elements with indices in
+    `range(start, stop)`.  For example, `diagonal_indices(2, 5)` slices out the
+    indicies `[(2, 2), (3, 3), (4, 4)]`."""
     return (np.arange(start, stop), np.arange(start, stop))
 
 def laguerre(n, a, x):
@@ -61,6 +66,10 @@ def laguerre_range(n_start, n_end, a, x):
          laguerre(n_end - 1, a, x)]
     in linear time of `n_end` rather than quadratic.
 
+    The time is linear in `n_end` not in the difference, because the initial
+    calculation of `laguerre(n_start, a, x)` times linear time proportional to
+    `n_start`, then each additional term takes another work unit.
+
     Reference: http://functions.wolfram.com/Polynomials/LaguerreL3/17/01/01/01/
     """
     if n_start >= n_end:
@@ -75,15 +84,36 @@ def laguerre_range(n_start, n_end, a, x):
     return out
 
 class Laser:
+    """Stores information about the laser used in an experiment, and provides
+    methods for calculating frequencies associated with transitions."""
     def __init__(self, detuning, lamb_dicke, base_rabi):
+        """Arguments:
+        detuning: float in Hz --
+            The detuning of the laser from perfect transitions.
+        lamb_dicke: float > 0 --
+            The value of the Lamb-Dicke parameter for this laser interaction
+            with an ion in the trap.
+        base_rabi: float in Hz --
+            The value of the base Rabi frequency of the laser transition.  This
+            is used to calculate the actual Rabi frequencies of all transitions
+            at all motional levels."""
         self.detuning = detuning
         self.lamb_dicke = lamb_dicke
         self.base_rabi = base_rabi
-        self.rabi_mod_from_rabi =\
-                (lambda rabis: rabis) if detuning == 0.0\
-                else lambda rabis: np.sqrt(detuning ** 2 + rabis ** 2)
+
+    def rabi_mod_from_rabi(self, rabis):
+        """Convert a set of Rabi frequencies into modified Rabi frequencies.
+        Works on singletons or arrays."""
+        if self.detuning == 0.0:
+            return rabis
+        else:
+            return np.sqrt(self.detuning ** 2 + rabis ** 2)
 
     def rabi(self, n1, n2):
+        """rabi(n1 : int >= 0, n2 : int >= 0) -> float in Hz
+
+        Get the Rabi frequency of a transition coupling motional levels `n1` and
+        `n2`."""
         ldsq = self.lamb_dicke * self.lamb_dicke
         out = np.exp(-0.5 * ldsq) * (self.lamb_dicke ** abs(n1 - n2))
         out = out * laguerre(min(n1, n2), abs(n1 - n2), ldsq)
@@ -93,6 +123,15 @@ class Laser:
         return self.base_rabi * out / np.sqrt(fact) 
 
     def rabi_range(self, n_start, n_end, diff):
+        """rabi_range(n_start : int >= 0, n_end >= 0, diff : int)
+        -> np.array of float in Hz.
+
+        Get a range of Rabi frequencies in linear time of `n_end`.  The
+        calculation of a single Rabi frequency is linear in `n`, so the naive
+        version of a range is quadratic.  This method is functionally equivalent
+        to
+            np.array([self.rabi(n, n + diff) for n in range(n_start, n_end)])
+        but runs in linear time."""
         if diff < 0:
             n_start = n_start + diff
             n_end = n_end + diff
@@ -105,19 +144,53 @@ class Laser:
         const = np.exp(-0.5*ldsq) * self.lamb_dicke**diff * self.base_rabi
         lag = laguerre_range(n_start, n_end, diff, ldsq)
         fact = np.empty_like(lag)
+        # the np.arange must contain a float so that the `.prod()` call doesn't
+        # use fixed-length integers and overflow the factorial calculation.
         fact[0] = 1.0 / np.arange(n_start + 1.0, n_start + diff + 1).prod()
         for i in range(1, n_end - n_start):
             fact[i] = fact[i - 1] * (n_start + i) / (n_start + i + diff)
         return const * lag * np.sqrt(fact)
 
     def rabi_mod(self, n1, n2):
+        """rabi_mod(n1 : int >= 0, n2 : int >= 0) -> float in Hz
+        
+        Calculate the modified Rabi frequency coupling the two motional levels
+        `n1` and `n2`."""
         return self.rabi_mod_from_rabi(self.rabi(n1, n2))
 
     def rabi_mod_range(self, n_start, n_end, diff):
+        """rabi_mod_range(n_start : int >= 0, n_end : int >= 0, diff : int)
+        -> np.array of float in Hz
+
+        Get a range of modified Rabi frequencies in linear time.  This is
+        functionally equivalent to
+            np.array([rabi_mod_range(n, n+diff) for n in range(n_start, n_end)])
+        but runs in linear time.
+
+        If you already have an array of the Rabi frequencies, use
+        `rabi_mod_from_rabi` to avoid recalculating them."""
         return self.rabi_mod_from_rabi(self.rabi_range(n_start, n_end, diff))
 
 class Sideband:
+    """Calculate time-evolution operators and their derivatives for single-ion
+    operations on a particular (arbitrary) sideband.
+    
+    All matrices are ordered to be correct when applied to a vector in the order
+        [ |e0>, |e1>, ... |e(ns - 1)>, |g0>, |g1>, ... |g(ns-1)> ]."""
+
+    # Largely the aim is to precalculate as much as possible so that subsequent
+    # calculations of the matrices are very fast.  The creation of this class
+    # ought to be linear in `ns`, as should all matrix-returning functions, if
+    # we ignore the potentially quadratic dependency of matrix (c)allocation.
+
     def __init__(self, ns, order, laser):
+        """Arguments:
+        ns: int > 0 -- The number of motional states to consider.
+        order: int --
+            The order of the sideband this operator should represent.  For
+            example, 0 -> carrier, -1 -> first red, 1 -> first blue, -2 ->
+            second red, and so on.
+        laser: Laser -- The laser settings to use for this transition."""
         self.__ns = ns
         self.__order = order
         self.__detuning = laser.detuning
@@ -146,6 +219,8 @@ class Sideband:
         self.__last_params = (None, None)
 
     def __update_if_required(self, time, phase):
+        """Update the common elements for use in the matrix-returning
+        functions."""
         if (time, phase) == self.__last_params:
             return
         self.__last_params = (time, phase)
@@ -156,10 +231,14 @@ class Sideband:
         self.__phase_tot = self.__phase_time * self.__phase_phi
 
     def u(self, time, phase):
+        """u(time : float in s, phase : float in rad) -> 2D np.array of complex
+
+        Get the matrix form of the time-evolution operator corresponding to this
+        transition.  The result is ordered such that it should be applied to a
+        vector [|e0>, |e1>, ..., |g0>, |g1>, ...]."""
         self.__update_if_required(time, phase)
         ee = self.__cos + 1j * self.__detuning * self.__sin / self.__rabi_mod
         ee = ee * self.__phase_time
-
         out = np.zeros((2 * self.__ns, 2 * self.__ns), dtype=np.complex128)
         out[self.__const_indices] = 1.0
         out[self.__eg_indices] = self.__sin[:self.__off_diag_len]\
@@ -170,12 +249,16 @@ class Sideband:
         return out
 
     def du_dt(self, time, phase):
+        """du_dt(time : float in s, phase : float in rad)
+        -> 2D np.array of complex
+        
+        Get the matrix form of the partial derivative of the time-evolution
+        operator with respect to time."""
         self.__update_if_required(time, phase)
         ee = self.__ee_du_dt_pre * self.__phase_time * self.__sin
         eg = 0.5 * self.__eg_pre * self.__phase_tot * (\
                 self.__rabi_mod*self.__cos - 1j*self.__detuning*self.__sin\
              )[:self.__off_diag_len]
-
         out = np.zeros((2 * self.__ns, 2 * self.__ns), dtype=np.complex128)
         out[self.__ee_indices] = ee[:len(self.__ee_indices[0])]
         out[self.__gg_indices] = np.conj(ee[:len(self.__gg_indices[0])])
@@ -184,6 +267,11 @@ class Sideband:
         return out
 
     def du_dphi(self, time, phase):
+        """du_dt(time : float in s, phase : float in rad)
+        -> 2D np.array of complex
+        
+        Get the matrix form of the partial derivative of the time-evolution
+        operator with respect to phase."""
         self.__update_if_required(time, phase)
         eg = -1j*self.__eg_pre*self.__sin[:self.__off_diag_len]*self.__phase_tot
         out = np.zeros((2 * self.__ns, 2 * self.__ns), dtype=np.complex128)

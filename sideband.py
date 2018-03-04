@@ -44,7 +44,7 @@ def diagonal_indices(start, stop):
 class Sideband:
     """Calculate time-evolution operators and their derivatives for single-ion
     operations on a particular (arbitrary) sideband.
-    
+
     All matrices are ordered to be correct when applied to a vector in the order
         [ |e0>, |e1>, ... |e(ns - 1)>, |g0>, |g1>, ... |g(ns-1)> ]."""
 
@@ -121,7 +121,7 @@ class Sideband:
     def du_dt(self, time, phase):
         """du_dt(time : float in s, phase : float in rad)
         -> 2D np.array of complex
-        
+
         Get the matrix form of the partial derivative of the time-evolution
         operator with respect to time."""
         self.__update_if_required(time, phase)
@@ -139,7 +139,7 @@ class Sideband:
     def du_dphi(self, time, phase):
         """du_dt(time : float in s, phase : float in rad)
         -> 2D np.array of complex
-        
+
         Get the matrix form of the partial derivative of the time-evolution
         operator with respect to phase."""
         self.__update_if_required(time, phase)

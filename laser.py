@@ -86,7 +86,7 @@ class Laser:
         fact = 1.0
         for n in range(1 + min(n1, n2), 1 + max(n1, n2)):
             fact = fact * n
-        return self.base_rabi * out / np.sqrt(fact) 
+        return self.base_rabi * out / np.sqrt(fact)
 
     def rabi_range(self, n_start, n_end, diff):
         """rabi_range(n_start : int >= 0, n_end >= 0, diff : int)
@@ -119,7 +119,7 @@ class Laser:
 
     def rabi_mod(self, n1, n2):
         """rabi_mod(n1 : int >= 0, n2 : int >= 0) -> float in Hz
-        
+
         Calculate the modified Rabi frequency coupling the two motional levels
         `n1` and `n2`."""
         return self.rabi_mod_from_rabi(self.rabi(n1, n2))

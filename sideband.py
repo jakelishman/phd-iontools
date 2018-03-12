@@ -61,9 +61,9 @@ class Sideband:
             example, 0 -> carrier, -1 -> first red, 1 -> first blue, -2 ->
             second red, and so on.
         laser: laser.Laser -- The laser settings to use for this transition."""
-        self.__ns = ns
-        self.__order = order
-        self.__detuning = laser.detuning
+        self.ns = ns
+        self.order = order
+        self.detuning = laser.detuning
         if order > 0:
             self.__const_indices = diagonal_indices(0, abs(order))
             self.__ee_indices = diagonal_indices(abs(order), ns)
@@ -76,7 +76,7 @@ class Sideband:
         self.__ge_indices = ladder_indices(ns, -order, (ns, 0))
         self.__rabi = laser.rabi_range(0, ns, abs(order))
         self.__rabi_mod = laser.rabi_mod_from_rabi(self.__rabi)
-        self.__off_diag_len = self.__ns - abs(order)
+        self.__off_diag_len = self.ns - abs(order)
         self.__eg_pre = -1.0j * np.exp(0.5j * np.pi * abs(order))\
                         * self.__rabi[:self.__off_diag_len]\
                         / self.__rabi_mod[:self.__off_diag_len]
@@ -96,7 +96,7 @@ class Sideband:
         self.__last_params = (time, phase)
         self.__sin = np.sin(self.__rabi_mod * 0.5 * time)
         self.__cos = np.cos(self.__rabi_mod * 0.5 * time)
-        self.__phase_time = np.exp(-0.5j * self.__detuning * time)
+        self.__phase_time = np.exp(-0.5j * self.detuning * time)
         self.__phase_phi = np.exp(-1j * phase)
         self.__phase_tot = self.__phase_time * self.__phase_phi
 
@@ -107,9 +107,9 @@ class Sideband:
         transition.  The result is ordered such that it should be applied to a
         vector [|e0>, |e1>, ..., |g0>, |g1>, ...]."""
         self.__update_if_required(time, phase)
-        ee = self.__cos + 1j * self.__detuning * self.__sin / self.__rabi_mod
+        ee = self.__cos + 1j * self.detuning * self.__sin / self.__rabi_mod
         ee = ee * self.__phase_time
-        out = np.zeros((2 * self.__ns, 2 * self.__ns), dtype=np.complex128)
+        out = np.zeros((2 * self.ns, 2 * self.ns), dtype=np.complex128)
         out[self.__const_indices] = 1.0
         out[self.__eg_indices] = self.__sin[:self.__off_diag_len]\
                                  * self.__eg_pre * self.__phase_tot
@@ -127,9 +127,9 @@ class Sideband:
         self.__update_if_required(time, phase)
         ee = self.__ee_du_dt_pre * self.__phase_time * self.__sin
         eg = 0.5 * self.__eg_pre * self.__phase_tot * (\
-                self.__rabi_mod*self.__cos - 1j*self.__detuning*self.__sin\
+                self.__rabi_mod * self.__cos - 1j * self.detuning * self.__sin\
              )[:self.__off_diag_len]
-        out = np.zeros((2 * self.__ns, 2 * self.__ns), dtype=np.complex128)
+        out = np.zeros((2 * self.ns, 2 * self.ns), dtype=np.complex128)
         out[self.__ee_indices] = ee[:len(self.__ee_indices[0])]
         out[self.__gg_indices] = np.conj(ee[:len(self.__gg_indices[0])])
         out[self.__eg_indices] = eg
@@ -144,7 +144,7 @@ class Sideband:
         operator with respect to phase."""
         self.__update_if_required(time, phase)
         eg = -1j*self.__eg_pre*self.__sin[:self.__off_diag_len]*self.__phase_tot
-        out = np.zeros((2 * self.__ns, 2 * self.__ns), dtype=np.complex128)
+        out = np.zeros((2 * self.ns, 2 * self.ns), dtype=np.complex128)
         out[self.__eg_indices] = eg
         out[self.__ge_indices] = -np.conj(eg)
         return out

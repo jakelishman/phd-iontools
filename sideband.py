@@ -4,6 +4,7 @@ laser sidebands and their derivatives."""
 __all__ = ["Sideband"]
 
 import numpy as np
+import qutip
 
 def ladder_indices(ns, change, quadrant):
     """Return an object which slices out the non-zero elements of a ladder
@@ -43,6 +44,13 @@ def diagonal_indices(start, stop):
     indicies `[(2, 2), (3, 3), (4, 4)]`."""
     return (np.arange(start, stop), np.arange(start, stop))
 
+# 2-level system projectors of |e><e| and |g><g|.  They are created like this to
+# ensure that the state is in the correct order to match the sigma_z operator.
+_proj_ee = (qutip.qeye(2) + qutip.sigmaz()) / 2
+_proj_gg = (qutip.qeye(2) - qutip.sigmaz()) / 2
+_proj_eg = qutip.sigmap()
+_proj_ge = qutip.sigmam()
+
 class Sideband:
     """Calculate time-evolution operators and their derivatives for single-ion
     operations on a particular (arbitrary) sideband.
@@ -52,8 +60,7 @@ class Sideband:
 
     # Largely the aim is to precalculate as much as possible so that subsequent
     # calculations of the matrices are very fast.  The creation of this class
-    # ought to be linear in `ns`, as should all matrix-returning functions, if
-    # we ignore the potentially quadratic dependency of matrix (c)allocation.
+    # ought to be linear in `ns`, as should all matrix-returning functions.
 
     def __init__(self, ns, order, laser):
         """Arguments:
@@ -67,15 +74,13 @@ class Sideband:
         self.order = order
         self.detuning = laser.detuning
         if order > 0:
-            self.__const_indices = diagonal_indices(0, abs(order))
-            self.__ee_indices = diagonal_indices(abs(order), ns)
-            self.__gg_indices = diagonal_indices(ns, 2 * ns)
+            self.__const_ind = (0, abs(order))
+            self.__ee_ind = (abs(order), ns)
+            self.__gg_ind = (ns, 2 * ns)
         else:
-            self.__const_indices = diagonal_indices(ns, ns + abs(order))
-            self.__ee_indices = diagonal_indices(0, ns)
-            self.__gg_indices = diagonal_indices(ns + abs(order), 2 * ns)
-        self.__eg_indices = ladder_indices(ns, order, (0, ns))
-        self.__ge_indices = ladder_indices(ns, -order, (ns, 0))
+            self.__const_ind = (ns, ns + abs(order))
+            self.__ee_ind = (0, ns)
+            self.__gg_ind = (ns + abs(order), 2 * ns)
         self.__rabi = laser.rabi_range(0, ns, abs(order))
         self.__rabi_mod = laser.rabi_mod_from_rabi(self.__rabi)
         self.__off_diag_len = self.ns - abs(order)
@@ -85,6 +90,7 @@ class Sideband:
         self.__ee_du_dt_pre = -0.5 * self.__rabi**2 / self.__rabi_mod
         self.__sin = np.empty_like(self.__rabi_mod)
         self.__cos = np.empty_like(self.__rabi_mod)
+        self.__diag = np.empty(2 * self.ns, dtype=np.complex128)
         self.__phase_time = 1.0
         self.__phase_phi = 1.0
         self.__phase_tot = 1.0
@@ -111,14 +117,17 @@ class Sideband:
         self.__update_if_required(time, phase)
         ee = self.__cos + 1j * self.detuning * self.__sin / self.__rabi_mod
         ee = ee * self.__phase_time
-        out = np.zeros((2 * self.ns, 2 * self.ns), dtype=np.complex128)
-        out[self.__const_indices] = 1.0
-        out[self.__eg_indices] = self.__sin[:self.__off_diag_len]\
-                                 * self.__eg_pre * self.__phase_tot
-        out[self.__ge_indices] = -np.conj(out[self.__eg_indices])
-        out[self.__ee_indices] = ee[:len(self.__ee_indices[0])]
-        out[self.__gg_indices] = np.conj(ee[:len(self.__gg_indices[0])])
-        return out
+        self.__diag[self.__const_ind[0]:self.__const_ind[1]] = 1.0
+        self.__diag[self.__ee_ind[0]:self.__ee_ind[1]] =\
+            ee[:self.__ee_ind[1] - self.__ee_ind[0]]
+        self.__diag[self.__gg_ind[0]:self.__gg_ind[1]] =\
+            np.conj(ee[:self.__gg_ind[1] - self.__gg_ind[0]])
+        eg = self.__sin[:self.__off_diag_len] * self.__eg_pre * self.__phase_tot
+        ge = -np.conj(eg)
+        return qutip.tensor(_proj_ee, qutip.qdiags(self.__diag[0:self.ns], 0))\
+               + qutip.tensor(_proj_gg, qutip.qdiags(self.__diag[self.ns:], 0))\
+               + qutip.tensor(_proj_eg, qutip.qdiags(eg, -self.order))\
+               + qutip.tensor(_proj_ge, qutip.qdiags(ge, self.order))
 
     def du_dt(self, time, phase):
         """du_dt(time : float in s, phase : float in rad)
@@ -131,12 +140,15 @@ class Sideband:
         eg = 0.5 * self.__eg_pre * self.__phase_tot * (\
                 self.__rabi_mod * self.__cos - 1j * self.detuning * self.__sin\
              )[:self.__off_diag_len]
-        out = np.zeros((2 * self.ns, 2 * self.ns), dtype=np.complex128)
-        out[self.__ee_indices] = ee[:len(self.__ee_indices[0])]
-        out[self.__gg_indices] = np.conj(ee[:len(self.__gg_indices[0])])
-        out[self.__eg_indices] = eg
-        out[self.__ge_indices] = -np.conj(eg)
-        return out
+        self.__diag[self.__const_ind[0]:self.__const_ind[1]] = 0.0
+        self.__diag[self.__ee_ind[0]:self.__ee_ind[1]] =\
+            ee[:self.__ee_ind[1] - self.__ee_ind[0]]
+        self.__diag[self.__gg_ind[0]:self.__gg_ind[1]] =\
+            np.conj(ee[:self.__gg_ind[1] - self.__gg_ind[0]])
+        return qutip.tensor(_proj_ee, qutip.qdiags(self.__diag[0:self.ns], 0))\
+               + qutip.tensor(_proj_gg, qutip.qdiags(self.__diag[self.ns:], 0))\
+               + qutip.tensor(_proj_eg, qutip.qdiags(eg, -self.order))\
+               + qutip.tensor(_proj_ge, qutip.qdiags(-np.conj(eg), self.order))
 
     def du_dphi(self, time, phase):
         """du_dt(time : float in s, phase : float in rad)
@@ -146,7 +158,5 @@ class Sideband:
         operator with respect to phase."""
         self.__update_if_required(time, phase)
         eg = -1j*self.__eg_pre*self.__sin[:self.__off_diag_len]*self.__phase_tot
-        out = np.zeros((2 * self.ns, 2 * self.ns), dtype=np.complex128)
-        out[self.__eg_indices] = eg
-        out[self.__ge_indices] = -np.conj(eg)
-        return out
+        return qutip.tensor(_proj_eg, qutip.qdiags(eg, -self.order))\
+               + qutip.tensor(_proj_ge, qutip.qdiags(-np.conj(eg), self.order))

@@ -1,5 +1,7 @@
 import numpy as np
 
+__all__ = ["Sequence"]
+
 class Sequence:
     def __init__(self, *pulses):
         """Arguments:

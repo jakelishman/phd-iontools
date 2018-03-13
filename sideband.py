@@ -1,6 +1,8 @@
 """Provides the Sideband class for calculation of time-evolution operators for
 laser sidebands and their derivatives."""
 
+__all__ = ["Sideband"]
+
 import numpy as np
 
 def ladder_indices(ns, change, quadrant):

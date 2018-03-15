@@ -11,6 +11,7 @@ class Sequence:
             order as they are applied, so the first pulse in the argument list
             is the first pulse applied to the system."""
         self.pulses = pulses
+        self.motional_change = sum(map(lambda x: abs(x.order), pulses))
         self.__last_params = None
         self.__op = None
         self.__d_op = np.empty(2 * len(pulses), dtype=qutip.Qobj)

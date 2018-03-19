@@ -42,7 +42,7 @@ def create(populated, ns=1, normalise=True):
     if isinstance(populated, dict):
         if not populated:
             raise TypeError("At least one populated state must be specified.")
-        pairs = lambda: populated.items()
+        pairs = populated.items
     else:
         if hasattr(populated, "__len__") and len(populated) is 0:
             raise TypeError("At least one populated state must be specified.")

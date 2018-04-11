@@ -88,3 +88,15 @@ class Sequence:
             order as how `params` was passed."""
         self.__update_if_required(params)
         return self.__d_op
+
+    def trace(self, params, state):
+        """trace(params: np.array of float, state: qutip.Qobj)
+        -> generator of qutip.Qobj
+
+        Return a generator which yields the state of the system after each of
+        the pulses in the sequence have been applied, including the initial and
+        end states."""
+        yield state
+        for i, pulse in enumerate(self.pulses):
+            state = pulse.u(*params[2*i:2*i+2]) * state
+            yield state

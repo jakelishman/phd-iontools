@@ -5,24 +5,44 @@ __all__ = ["Sequence"]
 
 class Sequence:
     def __init__(self, *pulses):
-        """Arguments:
+        """
+        Sequence(pulse1, pulse2, ...) == Sequence([pulse1, pulse2, ...])
+
+        Arguments:
         pulses: sideband.Sideband --
             The pulse sequence to apply.  They should be arranged in the same
             order as they are applied, so the first pulse in the argument list
             is the first pulse applied to the system."""
-        self.pulses = pulses
+        if len(pulses) is 0:
+            raise TypeError("Must have at least one pulse.")
+        elif len(pulses) is 1 and not isinstance(pulses[0], qutip.Qobj):
+            try:
+                pulses = list(pulses[0])
+            except TypeError:
+                pass
+        if any(map(lambda pulse: pulses[0].ns - pulse.ns, pulses)):
+            raise ValueError("Not all pulses have the same number of 'ns'.")
+        self.ns = pulses[0].ns
+        self.pulses = np.array(pulses)
         self.motional_change = sum(map(lambda x: abs(x.order), pulses))
         self.__last_params = None
         self.__op = None
         self.__d_op = np.empty(2 * len(pulses), dtype=qutip.Qobj)
         self.__cache = np.empty(len(pulses), dtype=qutip.Qobj)
 
+    def with_ns(self, ns):
+        """with_ns(ns: int) -> Sequence
+
+        Return a new `Sequence` object with the same properties, but considering
+        a different number of motional levels."""
+        return type(self)([pulse.with_ns(ns) for pulse in self.pulses])
+
     def __update_if_required(self, params):
         """Update the operators, but only if the parameters passed differ from
         the last calculation."""
         if np.array_equal(params, self.__last_params):
             return
-        self.__op = qutip.tensor(qutip.qeye(2), qutip.qeye(self.pulses[0].ns))
+        self.__op = qutip.tensor(qutip.qeye(2), qutip.qeye(self.ns))
         cur = self.__op
         self.__d_op[:] = self.__op
         for i in range(len(self.pulses) - 1):

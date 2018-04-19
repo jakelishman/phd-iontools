@@ -73,6 +73,7 @@ class Sideband:
         self.ns = ns
         self.order = order
         self.detuning = laser.detuning
+        self.__laser = laser
         if order > 0:
             self.__const_ind = (0, abs(order))
             self.__ee_ind = (abs(order), ns)
@@ -95,6 +96,13 @@ class Sideband:
         self.__phase_phi = 1.0
         self.__phase_tot = 1.0
         self.__last_params = (None, None)
+
+    def with_ns(self, ns):
+        """with_ns(ns: int) -> Sideband
+
+        Return a new `Sideband` object with the same properties, but considering
+        a different range of motional states."""
+        return type(self)(ns, self.order, self.__laser)
 
     def __update_if_required(self, time, phase):
         """Update the common elements for use in the matrix-returning

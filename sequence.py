@@ -1,10 +1,14 @@
 import numpy as np
 import qutip
+from .  import Sideband
 
 __all__ = ["Sequence"]
 
+def no_derivatives(*args, **kwargs):
+    raise NotImplementedError("Derivatives are not enabled.")
+
 class Sequence:
-    def __init__(self, *pulses):
+    def __init__(self, *pulses, derivatives=True):
         """
         Sequence(pulse1, pulse2, ...) == Sequence([pulse1, pulse2, ...])
 
@@ -12,14 +16,17 @@ class Sequence:
         pulses: sideband.Sideband --
             The pulse sequence to apply.  They should be arranged in the same
             order as they are applied, so the first pulse in the argument list
-            is the first pulse applied to the system."""
-        if len(pulses) is 0:
-            raise TypeError("Must have at least one pulse.")
-        elif len(pulses) is 1 and not isinstance(pulses[0], qutip.Qobj):
+            is the first pulse applied to the system.
+        derivatives (kw): bool --
+            Whether to calculate derivatives of the sideband with each update.
+        """
+        if len(pulses) is 1 and not isinstance(pulses[0], qutip.Qobj):
             try:
                 pulses = list(pulses[0])
             except TypeError:
                 pass
+        if len(pulses) is 0:
+            raise ValueError("Must have at least one pulse.")
         if any(map(lambda pulse: pulses[0].ns - pulse.ns, pulses)):
             raise ValueError("Not all pulses have the same number of 'ns'.")
         self.ns = pulses[0].ns
@@ -27,8 +34,15 @@ class Sequence:
         self.motional_change = sum(map(lambda x: abs(x.order), pulses))
         self.__last_params = None
         self.__op = None
-        self.__d_op = np.empty(2 * len(pulses), dtype=qutip.Qobj)
-        self.__cache = np.empty(len(pulses), dtype=qutip.Qobj)
+        # Perform branching only once at instantiation, rather than at each call
+        # to any function.
+        if derivatives:
+            self.__d_op = np.empty(2 * len(pulses), dtype=qutip.Qobj)
+            self.__cache = np.empty(len(pulses), dtype=qutip.Qobj)
+            self.__updater = self.__update_all
+        else:
+            self.d_op = no_derivatives
+            self.__updater = self.__update_only_u
 
     def with_ns(self, ns):
         """with_ns(ns: int) -> Sequence
@@ -38,10 +52,15 @@ class Sequence:
         return type(self)([pulse.with_ns(ns) for pulse in self.pulses])
 
     def __update_if_required(self, params):
-        """Update the operators, but only if the parameters passed differ from
-        the last calculation."""
+        """Update all the necessary operators, if the parameters have
+        changed."""
         if np.array_equal(params, self.__last_params):
             return
+        self.__updater(params)
+
+    def __update_all(self, params):
+        """Update the operators, but only if the parameters passed differ from
+        the last calculation."""
         self.__op = qutip.tensor(qutip.qeye(2), qutip.qeye(self.ns))
         cur = self.__op
         self.__d_op[:] = self.__op
@@ -64,6 +83,13 @@ class Sequence:
             cur = cur * self.__cache[i]
             self.__d_op[2 * i - 2] = cur * self.__d_op[2 * i - 2]
             self.__d_op[2 * i - 1] = cur * self.__d_op[2 * i - 1]
+        self.__last_params = np.array(params)
+
+    def __update_only_u(self, params):
+        """Update only the `u` operator, and don't calculate the derivatives."""
+        self.__op = qutip.tensor(qutip.qeye(2), qutip.qeye(self.ns))
+        for i, pulse in enumerate(self.pulses):
+            self.__op = pulse.u(*params[2*i : 2*i + 2]) * self.__op
         self.__last_params = np.array(params)
 
     def op(self, params):

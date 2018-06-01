@@ -101,7 +101,7 @@ def element(state, els):
         return state.full().flat[idx(els)]
     return state.full().flat[[idx(el) for el in els]]
 
-def populated_elements(state):
+def populated_elements(state, tol=1e-11):
     """populated_elements(state: qutip.Qobj) -> np.array of string * complex
 
     Given a state vector of a 2-level system tensor a Fock state, return a list
@@ -113,8 +113,25 @@ def populated_elements(state):
         (qubit + str(i), val) \
         for qubit, proj in zip(["e", "g"], qubit_projectors(state)) \
         for i, val in enumerate((proj * state).full().flat) \
-        if abs(val) > 1e-11
+        if abs(val) > tol
     ], dtype=np.dtype([("element", "U{}".format(digits+1)), ("value", "c16")]))
+
+def max_populated_n(state, tol=1e-11):
+    """
+    max_populated_n(state: qutip.Qobj) -> n: int >= 0
+
+    Get the number of the maximum populated motional level in a state.
+
+    Raises:
+    ValueError -- if the state has no populated motional levels.
+    """
+    ns_ = ns(state)
+    flat = state.full().flat
+    for i in range(state.dims[0][1] - 1, -1, -1):
+        if flat[i] > tol or flat[ns_ + i] > tol:
+            return i
+    raise ValueError("There were no populated levels at the given tolerance ("
+                     + str(tol) + ").")
 
 def qubit_projectors(target):
     """qubit_projectors(target: qutip.Qobj | int) -> qutip.Qobj * qutip.Qobj

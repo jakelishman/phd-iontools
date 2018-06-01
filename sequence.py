@@ -92,8 +92,12 @@ class Sequence:
             self.__op = pulse.u(*params[2*i : 2*i + 2]) * self.__op
         self.__last_params = np.array(params)
 
-    def op(self, params):
-        """Return the operator matrix for the sequence for the pulse lengths and
+    def op(self, times, phases=None):
+        """
+        op(params) -> matrix: 2D numpy.array of complex
+        op(times, phases) -> matrix: 2D numpy.array of complex
+
+        Return the operator matrix for the sequence for the pulse lengths and
         phases specified by `params`.
 
         Arguments:
@@ -106,15 +110,35 @@ class Sequence:
             These should be given in the same order as the pulses were given to
             instantiate the class.
 
+        times: np.array of float in s > 0 --
+            A sequence of the times for each of the pulses in the sequence.
+            These should be given in the same order as the pulses were given to
+            instantiate the class.
+
+        phases: np.array of float on (-pi, pi] --
+            A sequence of the phases for each of the pulses in the sequence.
+            These should be given in the same order as the pulses were given to
+            instantiate the class.
+
         Returns:
         2D np.array of complex --
             The matrix form of the entire evolution due to the pulse
             sequence."""
+        if phases is not None:
+            params = np.empty((len(times) + len(phases)), dtype=np.float64)
+            params[0::2] = times
+            params[1::2] = phases
+        else:
+            params = times
         self.__update_if_required(params)
         return self.__op
 
-    def d_op(self, params):
-        """Returns an array of matrices corresponding the derivatives of the
+    def d_op(self, times, phases=None):
+        """
+        d_op(params) -> matrices: 3D numpy.array of complex
+        d_op(times, phases) -> matrices: 3D numpy.array of complex
+
+        Returns an array of matrices corresponding the derivatives of the
         whole sequence matrix with respect to each of the parameters in turn.
 
         Arguments:
@@ -127,11 +151,29 @@ class Sequence:
             These should be given in the same order as the pulses were given to
             instantiate the class.
 
+        times: np.array of float in s > 0 --
+            A sequence of the times for each of the pulses in the sequence.
+            These should be given in the same order as the pulses were given to
+            instantiate the class.
+
+        phases: np.array of float on (-pi, pi] --
+            A sequence of the phases for each of the pulses in the sequence.
+            These should be given in the same order as the pulses were given to
+            instantiate the class.
+
         Returns:
         3D np.array of complex (as a stack of 2D matrices) --
             Each of the derivatives of the full pulse sequence with respect to
-            the parameters in the `params` argument.  They will be in the same
-            order as how `params` was passed."""
+            the parameters in the `params` argument.  The derivatives will
+            always be ordered as `time[0]`, `phase[0]`, `time[1]`, etc,
+            regardless of which form the parameters were passed in.
+        """
+        if phases is not None:
+            params = np.empty((times.size + phases.size,), dtype=np.float64)
+            params[0::2] = times
+            params[1::2] = phases
+        else:
+            params = times
         self.__update_if_required(params)
         return self.__d_op
 

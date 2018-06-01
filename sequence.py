@@ -10,7 +10,7 @@ def no_derivatives(*args, **kwargs):
 class Sequence:
     def __init__(self, *pulses, derivatives=True):
         """
-        Sequence(pulse1, pulse2, ...) == Sequence([pulse1, pulse2, ...])
+        Sequence(pulse0, pulse1, ...) == Sequence([pulse0, pulse1, ...])
 
         Arguments:
         pulses: sideband.Sideband --
@@ -43,6 +43,36 @@ class Sequence:
         else:
             self.d_op = no_derivatives
             self.__updater = self.__update_only_u
+
+    @classmethod
+    def from_orders(cls, orders, laser, ns=None, derivatives=True):
+        """
+        Sequence.from_orders(orders, laser) -> Sequence
+
+        Create a `Sequence` class from a specified list of orders, rather than
+        from pre-created `Sideband` classes.  This is just a convenience method.
+
+        Arguments:
+        orders: array-like of int --
+            The orders of the pulses to apply, where the ordering of the list is
+            the same as the ordering of how the pulses would be applied, i.e.
+            the first element of the list is the first pulse applied.
+
+        laser: Laser -- The laser parameters to be used.
+
+        ns (kw): int > 0 --
+            The number of motional states to consider for each pulse.  If this
+            is not specified, then the minimum number required to safely apply
+            the pulse sequence to (|g> + |e>)|0> will be used.
+
+        derivatives (ks): bool --
+            Whether to calculate derivatives of the pulse sequence.
+        """
+        if ns is None:
+            ns = 1 + sum(np.abs(orders))
+        pulses = [Sideband(ns, order, laser) for order in orders]
+        return cls(pulses, derivatives=derivatives)
+
 
     def with_ns(self, ns):
         """with_ns(ns: int) -> Sequence

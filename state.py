@@ -126,7 +126,7 @@ def max_populated_n(state, tol=1e-11):
     ValueError -- if the state has no populated motional levels.
     """
     ns_ = ns(state)
-    flat = state.full().flat
+    flat = np.abs(state.full().flat)
     for i in range(state.dims[0][1] - 1, -1, -1):
         if flat[i] > tol or flat[ns_ + i] > tol:
             return i

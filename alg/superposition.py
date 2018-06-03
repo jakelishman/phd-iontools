@@ -8,6 +8,10 @@ sidebands in the Lamb--Dicke regime.
 Throughout, the target specifier in function definitions is a dictionary
 defining the state to be populated, just like what would be passed to
 `iontools.state.create()`.
+
+The `single()` function is currently the only one implemented, which should be
+sufficient to find a pulse sequence to target any reasonable superposition
+inside the electronic decoherence time.
 """
 
 __all__ = ["Result", "single", "shortest", "all"]
@@ -15,6 +19,7 @@ __all__ = ["Result", "single", "shortest", "all"]
 from .. import Sideband as _Sideband
 from .. import Sequence as _Sequence
 from .. import state as _state
+from .. import Laser as _Laser
 import numpy as _np
 import qutip as _qutip
 
@@ -62,23 +67,61 @@ class Result:
         else:
             self.op = self.sequence.op(times, phases)
 
-def _is_populated(state, internal, n, tol):
+def _is_populated(state: _qutip.Qobj, internal: str, n: int, tol: float) -> bool:
+    """Is this particular internal and motional level populated?"""
     return _np.abs(_state.element(state, f"{internal}{n}")) > tol
 
-def _both_populated(state, n, tol):
+def _both_populated(state: _qutip.Qobj, n: int, tol: float) -> bool:
+    """Are both internal levels populated at this motional level?"""
     return _is_populated(state, "g", n, tol)\
            and _is_populated(state, "e", n, tol)
 
-def _paired_states(state, cur_n, out_of, order):
+def _paired_states(state: _qutip.Qobj, cur_n: int, out_of: str, order: int):
+    """Return a 2-tuple of the complex coefficients of the coupled ground and
+    excited states (in that order) for the parameters specified."""
     if out_of is "g":
         return _state.element(state, [f"g{cur_n}", f"e{cur_n + order}"])
     else:
         return _state.element(state, [f"g{cur_n - order}", f"e{cur_n}"])
 
-def single(target, laser, orders=None, tol=1e-11):
+def single(target, laser: _Laser, orders=None, tol=1e-11) -> Result:
+    """
+    Find a single pulse sequence that will evolve the state |g0> into the target
+    state specified in the parameters.  The phases returned are in the
+    "theoretical" picture, where there is a separate laser beam for each driven
+    transition, and they all start with zero phase.
+
+    Arguments:
+    target: dict | qutip.Qobj --
+        The target state at the end of the pulse sequence.  Can either be
+        specified as a list of populated elements as would be passed to
+        `iontools.state.create()`, or a `qutip.Qobj` that has already been
+        created.
+
+    laser: iontools.Laser --
+        The laser beam that will be used to create the pulses.
+
+    orders: optional list of int --
+        The specific sidebands that should be used in order of how they would be
+        applied.  It is a `ValueError` to pass an impossible list of orders.
+        Each element is the order of the sideband that should be applied in that
+        position.
+
+    tol: optional float --
+        The tolerance to use for calculating if a state is unoccupied.
+
+    Returns:
+    iontools.alg.superposition.Result --
+        The `Result` class that holds the results.
+
+    Raises:
+    ValueError --
+        If the `orders` list is impossible to achieve.
+    """
     if orders is not None:
         orders = orders[::-1]
-    state = target if isinstance(target, qutip.Qobj) else _state.create(target)
+    state: _qutip.Qobj = target if isinstance(target, _qutip.Qobj)\
+                         else _state.create(target)
     cur_n = _state.max_populated_n(state)
     ns = cur_n + 1
     times, phases, sidebands = [], [], []

@@ -1,11 +1,21 @@
 import numpy as np
 import qutip
-from .  import Sideband
+from . import Sideband
 
 __all__ = ["Sequence"]
 
 def no_derivatives(*args, **kwargs):
     raise NotImplementedError("Derivatives are not enabled.")
+
+class _DummySideband(Sideband):
+    def __init__(self):
+        self.ns = 1
+        self.order = 0
+        self.__base = qutip.tensor(qutip.qeye(2), qutip.qeye(2))
+        self.__d_base = self.__base - self.__base
+        self.u = lambda *args: self.__base
+        self.du_dt = lambda *args: self.__d_base
+        self.du_dphi = lambda *args: self.__d_base
 
 class Sequence:
     def __init__(self, *pulses, derivatives=True):
@@ -26,7 +36,8 @@ class Sequence:
             except TypeError:
                 pass
         if len(pulses) is 0:
-            raise ValueError("Must have at least one pulse.")
+            # insert dummy sideband to return identity matrix
+            pulses = [_DummySideband()]
         if any(map(lambda pulse: pulses[0].ns - pulse.ns, pulses)):
             raise ValueError("Not all pulses have the same number of 'ns'.")
         self.ns = pulses[0].ns

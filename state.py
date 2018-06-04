@@ -1,3 +1,23 @@
+"""
+Tools for creating and working with `qutip.Qobj` kets representing single ion
+coupled Hilbert spaces.
+
+The single ion is a coupled Hilbert space of an qubit and a (theoretically)
+infinite Fock space for the phonon mode.  This is represented in QuTiP
+pseudo-code as
+    qutip.tensor(qutip.basis(2, x), qutip.fock(N_max, n))
+for the |xn> state.
+
+The main tool in this module is the `create()` function, which creates a
+`qutip.Qobj` corresponding to a given target.
+
+For working with existing states, the functions `ns()` returns the number of
+motional states being considered, `element()` gets the coefficient `<xn|state>`,
+and `extend()` can make a state use more motional levels.
+
+For additional help, see the individual function helps.
+"""
+
 import numpy as np
 import qutip
 
@@ -12,7 +32,7 @@ def create(populated, ns=1, normalise=True):
     Arguments:
     populated: (dictionary | iterable) of state_name * value
     with
-        state_name: ("g" | "e") + string(int) --
+        state_name: ("g" | "e") + str(int) --
             The identifier of the state to be filled, for example the string
             "g3" is the state in the ground state and the n=3 motional level.
         value: complex -- The relative value of that state.

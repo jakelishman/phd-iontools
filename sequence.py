@@ -1,5 +1,12 @@
+"""
+Provides the `Sequence` class, though this is actually exposed as part of the
+top-level package.  For help, see the documentation of that class, or the
+top-level package.
+"""
+
 import numpy as np
 import qutip
+import functools
 from . import Sideband
 
 __all__ = ["Sequence"]
@@ -12,12 +19,61 @@ class _DummySideband(Sideband):
         self.ns = 1
         self.order = 0
         self.__base = qutip.tensor(qutip.qeye(2), qutip.qeye(2))
-        self.__d_base = self.__base - self.__base
+        self.__d_base = self.__base - self.__base # 0 op of same size
         self.u = lambda *args: self.__base
         self.du_dt = lambda *args: self.__d_base
         self.du_dphi = lambda *args: self.__d_base
 
+def _interleave(args_before):
+    """
+    If the arguments to a function are supplied as (time, phase), interleave
+    them into a single `params` array and pass them on.
+
+    `args_before` is the number of arguments before the `time`/`params`
+    argument, and then the parameters specifiers should be the last argument (in
+    the case of `params`), or the last two arguments (in the case of `times`,
+    `phases`).
+    """
+    def ret(func):
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            if len(args) == args_before + 2:
+                return func(*args)
+            else:
+                phases = args[args_before + 2]
+                params = np.empty((2 * len(args[args_before + 1]),),
+                                  dtype=np.float64)
+                params[0::2] = args[args_before + 1]
+                params[1::2] = phases
+                return func(*args[:args_before + 1], params, **kwargs)
+        return wrapper
+    return ret
+
 class Sequence:
+    """
+    This class provides an interface for working with a sequence of individual
+    `Sideband`s.  It can efficiently calculate the effective operator of the
+    whole pulse sequence using the `Sequence.op()` method, and the derivatives
+    are available (if they were not explicitly disabled) in the
+    `Sequence.d_op()` method.
+
+    The internals of this class are not particularly enlightening, since they
+    are optimised numerics to calculate the operator and the derivatives in a
+    manner linear in the number of pulses.
+
+    Members:
+    ns: int >= 0 -- The number of motional states considered.
+
+    pulses: np.array of `Sideband` --
+        The `Sideband`s that make up the sequence.  `pulses[0]` will be the
+        first pulse that is applied to any given state.
+
+    motional_change: int >= 0 --
+        The maximum possible motional change that can be brought about by the
+        sequence.  To be safe, you should have enough motional states under
+        consideration that there will never be "leakage" out of the top state.
+    """
+
     def __init__(self, *pulses, derivatives=True):
         """
         Sequence(pulse0, pulse1, ...) == Sequence([pulse0, pulse1, ...])
@@ -45,6 +101,7 @@ class Sequence:
         self.motional_change = sum(map(lambda x: abs(x.order), pulses))
         self.__last_params = None
         self.__op = None
+        self.derivatives = derivatives
         # Perform branching only once at instantiation, rather than at each call
         # to any function.
         if derivatives:
@@ -54,6 +111,21 @@ class Sequence:
         else:
             self.d_op = no_derivatives
             self.__updater = self.__update_only_u
+
+    def __repr__(self):
+        if len(self.pulses) is 1 and isinstance(self.pulses[0], _DummySideband):
+            npulses = 0
+            orders = []
+        else:
+            npulses = len(self.pulses)
+            orders = [x.order for x in self.pulses]
+        plural = "" if npulses is 1 else "s"
+        return "\n".join([
+            f"{self.__class__.__name__} containing {npulses} pulse{plural}.",
+            f"  orders      = {orders}",
+            f"  ns          = {self.ns}",
+            f"  derivatives = {self.derivatives}",
+        ])
 
     @classmethod
     def from_orders(cls, orders, laser, ns=None, derivatives=True):
@@ -133,13 +205,15 @@ class Sequence:
             self.__op = pulse.u(*params[2*i : 2*i + 2]) * self.__op
         self.__last_params = np.array(params)
 
-    def op(self, times, phases=None):
+    @_interleave(0)
+    def op(self, params):
         """
-        op(params) -> matrix: 2D numpy.array of complex
-        op(times, phases) -> matrix: 2D numpy.array of complex
+        op(params) -> matrix: qutip.Qobj (operator)
+        op(times, phases) -> matrix: qutip.Qobj (operator)
 
         Return the operator matrix for the sequence for the pulse lengths and
-        phases specified by `params`.
+        phases specified by `params`.  This can be called as either of the two
+        ways specified (for convenience).
 
         Arguments:
         params: np.array of alternating `time`, `phase`
@@ -165,19 +239,14 @@ class Sequence:
         2D np.array of complex --
             The matrix form of the entire evolution due to the pulse
             sequence."""
-        if phases is not None:
-            params = np.empty((len(times) + len(phases),), dtype=np.float64)
-            params[0::2] = times
-            params[1::2] = phases
-        else:
-            params = times
         self.__update_if_required(params)
         return self.__op
 
-    def d_op(self, times, phases=None):
+    @_interleave(0)
+    def d_op(self, params):
         """
-        d_op(params) -> matrices: 3D numpy.array of complex
-        d_op(times, phases) -> matrices: 3D numpy.array of complex
+        d_op(params) -> matrices: 1D np.array of qutip.Qobj (operator)
+        d_op(times, phases) -> matrices: 1D np.array of qutip.Qobj (operator)
 
         Returns an array of matrices corresponding the derivatives of the
         whole sequence matrix with respect to each of the parameters in turn.
@@ -209,22 +278,19 @@ class Sequence:
             always be ordered as `time[0]`, `phase[0]`, `time[1]`, etc,
             regardless of which form the parameters were passed in.
         """
-        if phases is not None:
-            params = np.empty((len(times) + len(phases),), dtype=np.float64)
-            params[0::2] = times
-            params[1::2] = phases
-        else:
-            params = times
         self.__update_if_required(params)
         return self.__d_op
 
-    def trace(self, params, state):
-        """trace(params: np.array of float, state: qutip.Qobj)
-        -> generator of qutip.Qobj
+    @_interleave(1)
+    def trace(self, state: qutip.Qobj, params):
+        """
+        trace(state: qutip.Qobj, params: np.array) -> generator of qutip.Qobj
+        trace(state: qutip.Qobj, times, phases) -> generator of qutip.Qobj
 
         Return a generator which yields the state of the system after each of
         the pulses in the sequence have been applied, including the initial and
-        end states."""
+        end states.
+        """
         yield state
         for i, pulse in enumerate(self.pulses):
             state = pulse.u(*params[2*i:2*i+2]) * state

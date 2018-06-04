@@ -52,22 +52,44 @@ def laguerre_range(n_start, n_end, a, x):
     return out
 
 class Laser:
-    """Stores information about the laser used in an experiment, and provides
-    methods for calculating frequencies associated with transitions."""
+    """
+    Stores information about the laser used in an experiment, and provides
+    methods for calculating frequencies associated with transitions.  This could
+    probably be named better.
+
+    The class exists for speed reasons - when calculating large numbers of Rabi
+    coupling frequencies, it is a quadratic dependency on the number of motional
+    levels to calculate them all individually.  This class allows linear
+    calculation of all the Rabi frequencies through the `Laser.rabi_range()` and
+    `Laser.rabi_mod_range()` functions, which allows large numbers of motional
+    states to be dealt with efficiently.
+    """
+
     def __init__(self, detuning, lamb_dicke, base_rabi):
-        """Arguments:
-        detuning: float in Hz --
-            The detuning of the laser from perfect transitions.
+        """
+        Arguments:
+        detuning: float in rad/s --
+            The detuning of the laser from perfect transitions.  This should be
+            supplied as an angular frequency.
         lamb_dicke: float > 0 --
             The value of the Lamb-Dicke parameter for this laser interaction
             with an ion in the trap.
-        base_rabi: float in Hz --
+        base_rabi: float in rad/s --
             The value of the base Rabi frequency of the laser transition.  This
             is used to calculate the actual Rabi frequencies of all transitions
-            at all motional levels."""
+            at all motional levels.  Supplied as an angular frequency.
+        """
         self.detuning = detuning
         self.lamb_dicke = lamb_dicke
         self.base_rabi = base_rabi
+
+    def __repr__(self):
+        return "\n".join([
+            f"{self.__class__.__name__}",
+            f"  detuning   = {self.detuning}",
+            f"  Lamb Dicke = {self.lamb_dicke}",
+            f"  base Rabi  = {self.base_rabi}",
+        ])
 
     def rabi_mod_from_rabi(self, rabis):
         """Convert a set of Rabi frequencies into modified Rabi frequencies.

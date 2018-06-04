@@ -23,6 +23,8 @@ from .. import Laser as _Laser
 import numpy as _np
 import qutip as _qutip
 
+_SI_TIME_UNITS = {1.0: "s", 1e-3: "ms", 1e-6: "us", 1e-12: "ns"}
+
 class Result:
     """
     A class which holds the result of the superposition pulse creation
@@ -66,6 +68,20 @@ class Result:
             self.op = _qutip.tensor(_qutip.qeye(2), _qutip.qeye(2))
         else:
             self.op = self.sequence.op(times, phases)
+
+    def __repr__(self):
+        ttime = f"{self.total_time}s"
+        for lim, unit in _SI_TIME_UNITS.items():
+            if self.total_time >= lim:
+                rescale = self.total_time / lim
+                ttime = f"{rescale:.3f}{unit}"
+                break
+        return "\n".join([
+            f"Superposition sequence result, which would take {ttime}.",
+            f"  times  = {repr(list(self.times))}",
+            f"  phases = {repr(list(self.phases))}",
+            f"  orders = {repr(list(self.orders))}",
+        ])
 
 def _is_populated(state: _qutip.Qobj, internal: str, n: int, tol: float) -> bool:
     """Is this particular internal and motional level populated?"""

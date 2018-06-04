@@ -1,5 +1,9 @@
-"""Provides the Sideband class for calculation of time-evolution operators for
-laser sidebands and their derivatives."""
+"""
+Provides the Sideband class for calculation of time-evolution operators for
+laser sidebands and their derivatives.  This should typically be accessed via
+the top-level package, so as `iontools.Sideband`, rather than needing to come
+into this module.
+"""
 
 __all__ = ["Sideband"]
 
@@ -52,11 +56,26 @@ _proj_eg = qutip.sigmap()
 _proj_ge = qutip.sigmam()
 
 class Sideband:
-    """Calculate time-evolution operators and their derivatives for single-ion
-    operations on a particular (arbitrary) sideband.
+    """
+    Calculate time-evolution operators and their derivatives for single-ion
+    operations on a particular (arbitrary) sideband.  Off-resonant excitations
+    are ignored, which requires that the trap frequency is much larger than the
+    base Rabi frequency, which is in turn much larger than the detuning of the
+    laser.
 
-    All matrices are ordered to be correct when applied to a vector in the order
-        [ |e0>, |e1>, ... |e(ns - 1)>, |g0>, |g1>, ... |g(ns-1)> ]."""
+    The main method is `Sideband.u()`, which calculates the time-evolution
+    operator for a specified time and phase.  The `Sideband.du_dt()` and
+    `Sideband.du_dphi()` methods are available for calculating the derivatives
+    as well.
+
+    The internals of this class are messy and not very enlightening due to the
+    precalculation of various factors for speed reasons.
+
+    Members:
+    ns: int >= 0 -- The number of motional states being considered.
+    order: int -- The order of the sideband.  `order` < 0 => red, etc.
+    detuning: float in rad -- The detuning of the laser being used.
+    """
 
     # Largely the aim is to precalculate as much as possible so that subsequent
     # calculations of the matrices are very fast.  The creation of this class
@@ -97,6 +116,20 @@ class Sideband:
         self.__phase_tot = 1.0
         self.__last_params = (None, None)
 
+    def __repr__(self):
+        if self.order == 0:
+            desc = "carrier"
+        else:
+            desc = ("red" if self.order < 0 else "blue") + f" {abs(self.order)}"
+        return "\n".join([
+            f"{self.__class__.__name__} of order {self.order} ({desc})",
+            f"  order      = {self.order}",
+            f"  ns         = {self.ns}",
+            f"  detuning   = {self.detuning}",
+            f"  Lamb-Dicke = {self.__laser.lamb_dicke}",
+            f"  base Rabi  = {self.__laser.base_rabi}",
+        ])
+
     def with_ns(self, ns):
         """with_ns(ns: int) -> Sideband
 
@@ -116,8 +149,8 @@ class Sideband:
         self.__phase_phi = np.exp(-1j * phase)
         self.__phase_tot = self.__phase_time * self.__phase_phi
 
-    def u(self, time, phase):
-        """u(time : float in s, phase : float in rad) -> 2D np.array of complex
+    def u(self, time: float, phase: float) -> qutip.Qobj:
+        """u(time: float in s, phase: float in rad) -> operator
 
         Get the matrix form of the time-evolution operator corresponding to this
         transition.  The result is ordered such that it should be applied to a
@@ -132,14 +165,13 @@ class Sideband:
             np.conj(ee[:self.__gg_ind[1] - self.__gg_ind[0]])
         eg = self.__sin[:self.__off_diag_len] * self.__eg_pre * self.__phase_tot
         ge = -np.conj(eg)
-        return qutip.tensor(_proj_ee, qutip.qdiags(self.__diag[0:self.ns], 0))\
+        return   qutip.tensor(_proj_ee, qutip.qdiags(self.__diag[:self.ns], 0))\
                + qutip.tensor(_proj_gg, qutip.qdiags(self.__diag[self.ns:], 0))\
                + qutip.tensor(_proj_eg, qutip.qdiags(eg, -self.order))\
                + qutip.tensor(_proj_ge, qutip.qdiags(ge, self.order))
 
-    def du_dt(self, time, phase):
-        """du_dt(time : float in s, phase : float in rad)
-        -> 2D np.array of complex
+    def du_dt(self, time: float, phase: float) -> qutip.Qobj:
+        """du_dt(time : float in s, phase : float in rad) -> operator
 
         Get the matrix form of the partial derivative of the time-evolution
         operator with respect to time."""
@@ -158,9 +190,8 @@ class Sideband:
                + qutip.tensor(_proj_eg, qutip.qdiags(eg, -self.order))\
                + qutip.tensor(_proj_ge, qutip.qdiags(-np.conj(eg), self.order))
 
-    def du_dphi(self, time, phase):
-        """du_dt(time : float in s, phase : float in rad)
-        -> 2D np.array of complex
+    def du_dphi(self, time: float, phase: float) -> qutip.Qobj:
+        """du_dphi(time: float in s, phase: float in rad) -> operator
 
         Get the matrix form of the partial derivative of the time-evolution
         operator with respect to phase."""

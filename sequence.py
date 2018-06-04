@@ -166,7 +166,7 @@ class Sequence:
             The matrix form of the entire evolution due to the pulse
             sequence."""
         if phases is not None:
-            params = np.empty((len(times) + len(phases)), dtype=np.float64)
+            params = np.empty((len(times) + len(phases),), dtype=np.float64)
             params[0::2] = times
             params[1::2] = phases
         else:
@@ -210,7 +210,7 @@ class Sequence:
             regardless of which form the parameters were passed in.
         """
         if phases is not None:
-            params = np.empty((times.size + phases.size,), dtype=np.float64)
+            params = np.empty((len(times) + len(phases),), dtype=np.float64)
             params[0::2] = times
             params[1::2] = phases
         else:

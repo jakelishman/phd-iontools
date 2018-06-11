@@ -25,6 +25,15 @@ import qutip as _qutip
 
 _SI_TIME_UNITS = {1.0: "s", 1e-3: "ms", 1e-6: "us", 1e-12: "ns"}
 
+def _bound(angle):
+    angle = _np.fmod(angle, 2 * _np.pi)
+    if angle <= -_np.pi:
+        return angle + 2 * _np.pi
+    elif angle > _np.pi:
+        return angle - 2 * _np.pi
+    else:
+        return angle
+
 class Result:
     """
     A class which holds the result of the superposition pulse creation
@@ -59,7 +68,7 @@ class Result:
     """
     def __init__(self, times, phases, laser, sidebands):
         self.times = times
-        self.phases = phases
+        self.phases = _np.array([_bound(phase - phases[0]) for phase in phases])
         self.orders = _np.array([sideband.order for sideband in sidebands])
         self.laser = laser
         self.total_time = sum(times)

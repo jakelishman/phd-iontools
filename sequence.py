@@ -166,15 +166,27 @@ class Sequence:
                   for order in orders]
         return cls(pulses, derivatives=derivatives)
 
-    def set_all_detunings(self, detuning):
+    def set_sideband_parameters(self, sideband: int, detuning=None,
+                                lamb_dicke=None, base_rabi=None):
         """
-        Set the detuning for all the pulses in the sequence to a particular
-        value.  This will force the updating of the operators on the next call
-        to `op()` or `d_op()`.
+        Update the sideband at position `sideband` to have the new parameters
+        specified.  This will force an update to `op()` and `d_op()` on the next
+        call to either of them, even if the parameters passed are the same.
         """
-        for pulse in self.pulses:
-            pulse.detuning = detuning
+        self.pulses[sideband].update_multiple_parameters(detuning,
+                                                         lamb_dicke,
+                                                         base_rabi)
         self.__force_update = True
+
+    def set_all_sideband_parameters(self, detuning=None, lamb_dicke=None,
+                                    base_rabi=None):
+        """
+        Update the sideband parameters for all of the pulses in the sequence.
+        This will force `op()` and `d_op()` to update on the next call to either
+        of them, even if the parameters passed are the same.
+        """
+        for i in range(len(self.pulses)):
+            self.set_sideband_parameters(i, detuning, lamb_dicke, base_rabi)
 
     def with_ns(self, ns):
         """with_ns(ns: int) -> Sequence

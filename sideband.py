@@ -167,6 +167,29 @@ class Sideband:
         self.__base_rabi = base_rabi
         self.__update_prefactors()
 
+    def update_multiple_parameters(self, detuning=None, lamb_dicke=None,
+                                   base_rabi=None):
+        """
+        Update multiple parameters at once.   This is much more efficient than
+        updating an individual parameter three times over, because each
+        parameter update causes the internal prefactors to be recomputed.  Using
+        this function allows us to only do that once.
+
+        Arguments:
+        detuning (kw): float in Hz -- The new detuning from resonance to use.
+        lamb_dicke (kw): float -- The new Lamb--Dicke parameter to use.
+        base_rabi (kw): float in Hz -- The new base Rabi frequency to use.
+        """
+        if detuning is not None:
+            self.__detuning = detuning
+        if lamb_dicke is not None:
+            self.__lamb_dicke = lamb_dicke
+        if base_rabi is not None:
+            self.__base_rabi = base_rabi
+        if detuning is None and lamb_dicke is None and base_rabi is None:
+            return
+        self.__update_prefactors()
+
     def with_ns(self, ns):
         """with_ns(ns: int) -> Sideband
 

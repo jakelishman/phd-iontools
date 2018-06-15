@@ -9,6 +9,7 @@ __all__ = ["Sideband"]
 
 import numpy as np
 import qutip
+from . import rabi as _rabi
 
 def ladder_indices(ns, change, quadrant):
     """Return an object which slices out the non-zero elements of a ladder
@@ -81,18 +82,23 @@ class Sideband:
     # calculations of the matrices are very fast.  The creation of this class
     # ought to be linear in `ns`, as should all matrix-returning functions.
 
-    def __init__(self, ns, order, laser):
-        """Arguments:
+    def __init__(self, ns, order, lamb_dicke, base_rabi, detuning=0.0):
+        """
+        Arguments:
         ns: int > 0 -- The number of motional states to consider.
         order: int --
             The order of the sideband this operator should represent.  For
             example, 0 -> carrier, -1 -> first red, 1 -> first blue, -2 ->
             second red, and so on.
-        laser: laser.Laser -- The laser settings to use for this transition."""
+        lamb_dicke: float -- The Lamb-Dicke parameter of the laser used.
+        base_rabi: float in Hz -- The base Rabi frequency of the laser used.
+        detuning: float in Hz -- The detuning of the laser from transition.
+        """
         self.ns = ns
         self.order = order
-        self.detuning = laser.detuning
-        self.__laser = laser
+        self.__lamb_dicke = lamb_dicke
+        self.__base_rabi = base_rabi
+        self.__detuning = detuning
         if order > 0:
             self.__const_ind = (0, abs(order))
             self.__ee_ind = (abs(order), ns)
@@ -101,13 +107,8 @@ class Sideband:
             self.__const_ind = (ns, ns + abs(order))
             self.__ee_ind = (0, ns)
             self.__gg_ind = (ns + abs(order), 2 * ns)
-        self.__rabi = laser.rabi_range(0, ns, abs(order))
-        self.__rabi_mod = laser.rabi_mod_from_rabi(self.__rabi)
         self.__off_diag_len = self.ns - abs(order)
-        self.__eg_pre = -1.0j * np.exp(0.5j * np.pi * abs(order))\
-                        * self.__rabi[:self.__off_diag_len]\
-                        / self.__rabi_mod[:self.__off_diag_len]
-        self.__ee_du_dt_pre = -0.5 * self.__rabi**2 / self.__rabi_mod
+        self.__update_prefactors()
         self.__sin = np.empty_like(self.__rabi_mod)
         self.__cos = np.empty_like(self.__rabi_mod)
         self.__diag = np.empty(2 * self.ns, dtype=np.complex128)
@@ -126,21 +127,58 @@ class Sideband:
             f"  order      = {self.order}",
             f"  ns         = {self.ns}",
             f"  detuning   = {self.detuning}",
-            f"  Lamb-Dicke = {self.__laser.lamb_dicke}",
-            f"  base Rabi  = {self.__laser.base_rabi}",
+            f"  Lamb-Dicke = {self.lamb_dicke}",
+            f"  base Rabi  = {self.base_rabi}",
         ])
+
+    def __update_prefactors(self):
+        self.__rabi = self.__base_rabi\
+            * _rabi.relative_rabi_range(self.__lamb_dicke,
+                                        0, self.ns,
+                                        abs(self.order))
+        self.__rabi_mod = _rabi.rabi_mod_from_rabi(self.__detuning, self.__rabi)
+        self.__eg_pre = -1.0j * np.exp(0.5j * np.pi * abs(self.order))\
+                        * self.__rabi[:self.__off_diag_len]\
+                        / self.__rabi_mod[:self.__off_diag_len]
+        self.__ee_du_dt_pre = -0.5 * self.__rabi**2 / self.__rabi_mod
+        self.__force_update = True
+
+    @property
+    def detuning(self):
+        return self.__detuning
+    @detuning.setter
+    def detuning(self, detuning):
+        self.__detuning = detuning
+        self.__update_prefactors()
+
+    @property
+    def lamb_dicke(self):
+        return self.__lamb_dicke
+    @lamb_dicke.setter
+    def lamb_dicke(self, lamb_dicke):
+        self.__lamb_dicke = lamb_dicke
+        self.__update_prefactors()
+
+    @property
+    def base_rabi(self):
+        return self.__base_rabi
+    @base_rabi.setter
+    def base_rabi(self, base_rabi):
+        self.__base_rabi = base_rabi
+        self.__update_prefactors()
 
     def with_ns(self, ns):
         """with_ns(ns: int) -> Sideband
 
         Return a new `Sideband` object with the same properties, but considering
         a different range of motional states."""
-        return type(self)(ns, self.order, self.__laser)
+        return type(self)(ns, self.order, self.lamb_dicke, self.base_rabi,
+                          detuning=self.detuning)
 
     def __update_if_required(self, time, phase):
         """Update the common elements for use in the matrix-returning
         functions."""
-        if (time, phase) == self.__last_params:
+        if (not self.__force_update) and (time, phase) == self.__last_params:
             return
         self.__last_params = (time, phase)
         self.__sin = np.sin(self.__rabi_mod * 0.5 * time)
@@ -148,6 +186,7 @@ class Sideband:
         self.__phase_time = np.exp(-0.5j * self.detuning * time)
         self.__phase_phi = np.exp(-1j * phase)
         self.__phase_tot = self.__phase_time * self.__phase_phi
+        self.__force_update = False
 
     def u(self, time: float, phase: float) -> qutip.Qobj:
         """u(time: float in s, phase: float in rad) -> operator

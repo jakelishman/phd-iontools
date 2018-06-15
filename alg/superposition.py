@@ -19,7 +19,6 @@ __all__ = ["Result", "single", "shortest", "all"]
 from .. import Sideband as _Sideband
 from .. import Sequence as _Sequence
 from .. import state as _state
-from .. import Laser as _Laser
 import numpy as _np
 import qutip as _qutip
 
@@ -53,7 +52,9 @@ class Result:
         The orders of the sidebands that should be applied.  The first order in
         the list is the first pulse that should be applied.
 
-    laser: iontools.Laser -- The laser that was used to generate the times.
+    lamb_dicke: float -- The Lamb--Dicke parameter used.
+
+    base_rabi: float in Hz -- The base Rabi frequency of the laser used.
 
     total_time: float in s -- The total time taken for the pulse sequence.
 
@@ -66,11 +67,12 @@ class Result:
         An operator matrix representing the unitary transformation that is
         applied.
     """
-    def __init__(self, times, phases, laser, sidebands):
+    def __init__(self, times, phases, lamb_dicke, base_rabi, sidebands):
         self.times = times
         self.phases = _np.array([_bound(phase - phases[0]) for phase in phases])
         self.orders = _np.array([sideband.order for sideband in sidebands])
-        self.laser = laser
+        self.lamb_dicke = lamb_dicke
+        self.base_rabi = base_rabi
         self.total_time = sum(times)
         self.sequence = _Sequence(sidebands)
         if len(sidebands) is 0:
@@ -109,7 +111,8 @@ def _paired_states(state: _qutip.Qobj, cur_n: int, out_of: str, order: int):
     else:
         return _state.element(state, [f"g{cur_n - order}", f"e{cur_n}"])
 
-def single(target, laser: _Laser, orders=None, tol=1e-11) -> Result:
+def single(target, lamb_dicke: float, base_rabi: float,
+           orders=None, tol=1e-11) -> Result:
     """
     Find a single pulse sequence that will evolve the state |g0> into the target
     state specified in the parameters.  The phases returned are in the
@@ -123,8 +126,11 @@ def single(target, laser: _Laser, orders=None, tol=1e-11) -> Result:
         `iontools.state.create()`, or a `qutip.Qobj` that has already been
         created.
 
-    laser: iontools.Laser --
-        The laser beam that will be used to create the pulses.
+    lamb_dicke: float --
+        The Lamb--Dicke parameter of the laser used to create the pulses.
+
+    base_rabi: float in Hz --
+        The base Rabi frequency of the laser used to create the pulses.
 
     orders: optional list of int --
         The specific sidebands that should be used in order of how they would be
@@ -150,8 +156,9 @@ def single(target, laser: _Laser, orders=None, tol=1e-11) -> Result:
     cur_n = _state.max_populated_n(state)
     ns = cur_n + 1
     times, phases, sidebands = [], [], []
-    rabi_carrier = laser.rabi_range(0, cur_n + 1, 0)
-    rabi_red = laser.rabi_range(0, cur_n, 1)
+    rabi_carrier = base_rabi\
+                   * _rabi.relative_rabi_range(lamb_dicke, 0, cur_n + 1, 0)
+    rabi_red = base_rabi * _rabi.relative_rabi_range(lamb_dicke, 0, cur_n, 1)
     count = 0
     while cur_n > 0 or _is_populated(state, "e", 0, tol):
         if cur_n == 0:
@@ -187,7 +194,7 @@ def single(target, laser: _Laser, orders=None, tol=1e-11) -> Result:
         else:
             phase = .5 * _np.pi * (abs(order) - 1) + _np.angle(g) - _np.angle(e)
             time = -2.0 * _np.arctan2(_np.abs(e), _np.abs(g)) / rabi
-        sideband = _Sideband(ns, order, laser)
+        sideband = _Sideband(ns, order, lamb_dicke, base_rabi)
         times.append(time)
         phases.append(phase)
         sidebands.append(sideband)
@@ -197,4 +204,4 @@ def single(target, laser: _Laser, orders=None, tol=1e-11) -> Result:
     times = -_np.array(times[::-1])
     phases = _np.array(phases[::-1])
     sidebands = _np.array(sidebands[::-1])
-    return Result(times, phases, laser, sidebands)
+    return Result(times, phases, lamb_dicke, base_rabi, sidebands)

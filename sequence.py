@@ -102,6 +102,7 @@ class Sequence:
         self.__last_params = None
         self.__op = None
         self.derivatives = derivatives
+        self.__force_update = False
         # Perform branching only once at instantiation, rather than at each call
         # to any function.
         if derivatives:
@@ -128,7 +129,8 @@ class Sequence:
         ])
 
     @classmethod
-    def from_orders(cls, orders, laser, ns=None, derivatives=True):
+    def from_orders(cls, orders, lamb_dicke, base_rabi,
+                    detuning=0.0, ns=None, derivatives=True):
         """
         Sequence.from_orders(orders, laser) -> Sequence
 
@@ -141,7 +143,14 @@ class Sequence:
             the same as the ordering of how the pulses would be applied, i.e.
             the first element of the list is the first pulse applied.
 
-        laser: Laser -- The laser parameters to be used.
+        lamb_dicke: float --
+            The Lamb-Dicke parameter to use for each of the sidebands.
+
+        base_rabi: float in Hz --
+            The base Rabi frequency to use for each of the sidebands.
+
+        detuning (kw): float in Hz --
+            The detuning from resonance of each of the sidebands.
 
         ns (kw): int > 0 --
             The number of motional states to consider for each pulse.  If this
@@ -153,9 +162,19 @@ class Sequence:
         """
         if ns is None:
             ns = 1 + sum(np.abs(orders))
-        pulses = [Sideband(ns, order, laser) for order in orders]
+        pulses = [Sideband(ns, order, lamb_dicke, base_rabi, detuning)
+                  for order in orders]
         return cls(pulses, derivatives=derivatives)
 
+    def set_all_detunings(self, detuning):
+        """
+        Set the detuning for all the pulses in the sequence to a particular
+        value.  This will force the updating of the operators on the next call
+        to `op()` or `d_op()`.
+        """
+        for pulse in self.pulses:
+            pulse.detuning = detuning
+        self.__force_update = True
 
     def with_ns(self, ns):
         """with_ns(ns: int) -> Sequence
@@ -167,8 +186,10 @@ class Sequence:
     def __update_if_required(self, params):
         """Update all the necessary operators, if the parameters have
         changed."""
-        if np.array_equal(params, self.__last_params):
+        if (not self.__force_update)\
+           and np.array_equal(params, self.__last_params):
             return
+        self.__force_update = False
         self.__updater(params)
 
     def __update_all(self, params):
@@ -206,7 +227,7 @@ class Sequence:
         self.__last_params = np.array(params)
 
     @_interleave(0)
-    def op(self, params):
+    def op(self, params, force=False):
         """
         op(params) -> matrix: qutip.Qobj (operator)
         op(times, phases) -> matrix: qutip.Qobj (operator)
@@ -239,11 +260,12 @@ class Sequence:
         2D np.array of complex --
             The matrix form of the entire evolution due to the pulse
             sequence."""
+        self.__force_update = self.__force_update or force
         self.__update_if_required(params)
         return self.__op
 
     @_interleave(0)
-    def d_op(self, params):
+    def d_op(self, params, force=False):
         """
         d_op(params) -> matrices: 1D np.array of qutip.Qobj (operator)
         d_op(times, phases) -> matrices: 1D np.array of qutip.Qobj (operator)
@@ -278,6 +300,7 @@ class Sequence:
             always be ordered as `time[0]`, `phase[0]`, `time[1]`, etc,
             regardless of which form the parameters were passed in.
         """
+        self.__force_update = self.__force_update or force
         self.__update_if_required(params)
         return self.__d_op
 

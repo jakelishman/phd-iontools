@@ -11,19 +11,18 @@ from a particular transition.
 
 The `Sideband` class is the main tool for working with the interaction of a
 single sideband with an ion.  The `Sequence` class is used for working with
-whole discrete pulse sequences of these sidebands.  A `Laser` contains the
-necessary operating parameters to calculate the operators for these classes, and
-the `state` module, including in particular `state.create()` are used for
-creating the `qutip.Qobj` kets corresponding to the trapped ion states.
+whole discrete pulse sequences of these sidebands.  The `rabi` module contains
+the functions necessary to calculate Rabi frequencies on your own, and are
+heavily used internally by the `Sideband` class.  The `state` module, including
+in particular `state.create()` is used for creating the `qutip.Qobj` kets
+corresponding to the trapped ion states.
 
 Also included in the `alg` package are analytical algorithms for calculating
 interesting pulse sequences in the trapped ions.
 """
 
-from .laser import *
 from .sideband import *
 from .sequence import *
-from . import state
-from . import alg
+from . import state, alg, rabi
 
-__all__ = laser.__all__ + sideband.__all__ + sequence.__all__ + ["state", "alg"]
+__all__ = sideband.__all__ + sequence.__all__ + ["state", "alg", "rabi"]

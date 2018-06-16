@@ -19,6 +19,7 @@ __all__ = ["Result", "single", "shortest", "all"]
 from .. import Sideband as _Sideband
 from .. import Sequence as _Sequence
 from .. import state as _state
+from .. import rabi as _rabi
 import numpy as _np
 import qutip as _qutip
 

@@ -123,7 +123,8 @@ def relative_rabi_range(lamb_dicke: float, n_start: int, n_end: int, diff: int)\
         fact[i] = fact[i - 1] * (n_start + i) / (n_start + i + diff)
     return const * lag * np.sqrt(fact)
 
-def rabi_mod(lamb_dicke: float, base_rabi: float, n1: int, n2: int) -> float:
+def rabi_mod(detuning: float, lamb_dicke: float, base_rabi: float,
+             n1: int, n2: int) -> float:
     """
     Calculate the modified Rabi frequency coupling the two motional levels
     `n1` and `n2`.
@@ -131,7 +132,7 @@ def rabi_mod(lamb_dicke: float, base_rabi: float, n1: int, n2: int) -> float:
     return rabi_mod_from_rabi(detuning,
                               base_rabi * relative_rabi(lamb_dicke, n1, n2))
 
-def rabi_mod_range(lamb_dicke: float, base_rabi: float,
+def rabi_mod_range(detuning: float, lamb_dicke: float, base_rabi: float,
                    n_start: int, n_end: int, diff: int)\
         -> np.ndarray:
     """

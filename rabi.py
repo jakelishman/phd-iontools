@@ -111,7 +111,7 @@ def relative_rabi_range(lamb_dicke: float, n_start: int, n_end: int, diff: int)\
     if n_start >= n_end:
         return np.array([])
     elif n_start == n_end - 1:
-        return np.array([rabi(n_start, n_start + diff)])
+        return np.array([relative_rabi(lamb_dicke, n_start, n_start + diff)])
     ldsq = lamb_dicke * lamb_dicke
     const = np.exp(-0.5*ldsq) * lamb_dicke**diff
     lag = laguerre_range(n_start, n_end, diff, ldsq)

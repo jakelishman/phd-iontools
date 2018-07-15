@@ -12,6 +12,10 @@ defining the state to be populated, just like what would be passed to
 The `single()` function is currently the only one implemented, which should be
 sufficient to find a pulse sequence to target any reasonable superposition
 inside the electronic decoherence time.
+
+The superposition finder functions return objects of the type
+`iontools.alg.superposition.Result`.  More help is available in the docstring of
+that class (or instances of it).
 """
 
 __all__ = ["Result", "single", "shortest", "all"]
@@ -139,6 +143,12 @@ def single(target, lamb_dicke: float, base_rabi: float,
         Each element is the order of the sideband that should be applied in that
         position.
 
+        The list of orders passed can only be as long as the shortest possible
+        sequence.  For example, to create the superposition
+            {'g0': 1, 'g1': 1, 'g2': 1}
+        the valid lists of orders are
+            [c, {b, r}, c, {b, r}, c, r].
+
     tol: optional float --
         The tolerance to use for calculating if a state is unoccupied.
 
@@ -182,8 +192,9 @@ def single(target, lamb_dicke: float, base_rabi: float,
                              + str(orders))
         elif orders is not None and order != orders[count]:
             raise ValueError("Could not follow the desired pulse sequence.  "
-                             + f"Was asked to use {orders[count]}, but had to "
-                             + f"use {order} instead.")
+                             + f"For pulse number {len(orders) - count} I was"
+                             + f" asked to use {orders[count]}, but I expected"
+                             + f" to see {order}.")
         rabi = rabi_carrier[cur_n] if order == 0 else rabi_red[cur_n - 1]
         g, e = _paired_states(state, cur_n, out_of, order)
         # Make sure the time here is always negative.  Since we take the
